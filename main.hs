@@ -9,8 +9,38 @@ data Inst =
   deriving Show
 type Code = [Inst]
 
--- createEmptyStack :: Stack
-createEmptyStack = undefined -- TODO, Uncomment the function signature after defining Stack
+-- Data structures -- 
+-- Stack --
+data Stack a = Stk [a]
+    deriving Show
+
+push :: a -> Stack a -> Stack a
+push x (Stk xs) = Stk (x:xs)
+
+
+pop (Stk (_:xs)) = Stk xs
+
+top (Stk (x:_)) = x
+
+emptyStk = Stk []
+
+isEmpty (Stk [])= True
+isEmpty (Stk _) = False
+
+-- State --
+data State a b = State [(a,b)]
+    deriving show
+
+emptyState :: State a b
+emptyState = State []
+
+addState :: State a b -> (a, b) -> State a b
+addState (State state) newPair = State (newPair : state)
+
+-- TO DO functions --
+
+createEmptyStack :: Stack
+createEmptyStack = emptyStk
 
 -- stack2Str :: Stack -> String
 stack2Str = undefined -- TODO, Uncomment all the other function type declarations as you implement them
