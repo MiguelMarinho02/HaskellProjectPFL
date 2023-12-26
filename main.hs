@@ -11,45 +11,53 @@ type Code = [Inst]
 
 -- Data structures -- 
 -- Stack --
-data Stack a = Stk [a]
+data Stack = Stk [String]
     deriving Show
 
-push :: a -> Stack a -> Stack a
+push :: String -> Stack -> Stack
 push x (Stk xs) = Stk (x:xs)
 
-
+pop :: Stack -> Stack
 pop (Stk (_:xs)) = Stk xs
 
+top :: Stack -> String
 top (Stk (x:_)) = x
 
+emptyStk :: Stack
 emptyStk = Stk []
 
+isEmpty :: Stack -> Bool
 isEmpty (Stk [])= True
 isEmpty (Stk _) = False
 
 -- State --
-data State a b = State [(a,b)]
-    deriving show
+data State = State [(String,String)]
+    deriving Show
 
-emptyState :: State a b
+emptyState :: State
 emptyState = State []
 
-addState :: State a b -> (a, b) -> State a b
+addState :: State -> (String, String) -> State
 addState (State state) newPair = State (newPair : state)
 
--- TO DO functions --
+isEmptyState :: State -> Bool
+isEmptyState (State [])= True
+isEmptyState (State _) = False
 
+-- TO DO functions --
 createEmptyStack :: Stack
 createEmptyStack = emptyStk
 
--- stack2Str :: Stack -> String
-stack2Str = undefined -- TODO, Uncomment all the other function type declarations as you implement them
+stack2Str :: Stack -> String 
+stack2Str stk = if isEmpty (pop stk) then top stk else top stk ++ "," ++ stack2Str (pop stk)
 
--- createEmptyState :: State
-createEmptyState = undefined -- TODO, Uncomment the function signature after defining State
+createEmptyState :: State
+createEmptyState = emptyState
 
--- state2Str :: State -> String
-state2Str = undefined -- TODO
+state2Str :: State -> String
+state2Str (State pairs) = init (concatMap pairToStr pairs)
+  where
+    pairToStr (key, value) = key ++ "=" ++ value ++ "," 
 
 -- run :: (Code, Stack, State) -> (Code, Stack, State)
 run = undefined -- TODO
