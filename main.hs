@@ -48,8 +48,11 @@ isEmptyState (State _) = False
 createEmptyStack :: Stack
 createEmptyStack = emptyStk
 
+checkStr :: String -> String
+checkStr s = if s == "ff" then "False" else if s == "tt" then "True" else s
+
 stack2Str :: Stack -> String 
-stack2Str stk = if isEmpty (pop stk) then top stk else top stk ++ "," ++ stack2Str (pop stk)
+stack2Str stk = if isEmpty (pop stk) then checkStr (top stk) else checkStr (top stk) ++ "," ++ stack2Str (pop stk)
 
 createEmptyState :: State
 createEmptyState = emptyState
