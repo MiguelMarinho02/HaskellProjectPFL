@@ -170,7 +170,6 @@ run (inst:code, stack, state) =
     Loop c1 c2 -> run (c1 ++ [Branch (c2 ++ [Loop c1 c2]) [Noop]] ++ code, stack, state) ---- Loop c1 c2 -> run (c1 ++ [Branch c2 (Noop : Loop c1 c2 : [])] ++ code, stack, state)
     Noop -> run (code, stack, state)
     -- Add other cases for the remaining instructions
-    _ -> error ("Unknown instruction encountered: " ++ show inst)
 
 
 checkTopTwo :: Stack -> Maybe (Integer, Integer)
