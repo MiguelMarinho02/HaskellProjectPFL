@@ -2,6 +2,7 @@ import Text.Parsec
 import Text.Parsec.String (Parser)
 import Text.Parsec.Expr
 import Data.Char
+import Data.List
 -- PFL 2023/24 - Haskell practical assignment quickstart
 
 -- Part 1
@@ -272,9 +273,9 @@ type Program = [Stm]
 compA :: Aexp -> Code
 compA (ALit s) = [Push s]
 compA (AVar var) = [Fetch var]
-compA (AAdd e1 e2) = compA e1 ++ compA e2 ++ [Add]
-compA (ASub e1 e2) = compA e1 ++ compA e2 ++ [Sub]
-compA (AMul e1 e2) = compA e1 ++ compA e2 ++ [Mult]
+compA (AAdd e1 e2) = compA e2 ++ compA e1 ++ [Add]
+compA (ASub e1 e2) = compA e2 ++ compA e1 ++ [Sub]
+compA (AMul e1 e2) = compA e2 ++ compA e1 ++ [Mult]
 
 compB :: Bexp -> Code
 compB (BLit True) = [Tru]
@@ -406,8 +407,8 @@ testParser programCode = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(compile (Main.parse programCode), createEmptyStack, createEmptyState)
 
 -- Examples:
--- testParser "x := 5; x := x - 1;" == ("","x=4")
--- testParser "x := 0 - 2;" == ("","x=-2")
+tp1 = testParser "x := 5; x := x - 1;" == ("","x=4")
+tp2 = testParser "x := 0 - 2;" == ("","x=-2")
 -- testParser "if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;" == ("","y=2")
 -- testParser "x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;);" == ("","x=1")
 -- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;" == ("","x=2")
