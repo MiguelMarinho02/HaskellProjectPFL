@@ -88,14 +88,14 @@ equ = [Equ]
 le :: Code
 le = [Le]
 
-getStatePairs :: State -> [(String, String)]
-getStatePairs (State pairs) = pairs
+getStatePairs :: Main.State -> [(String, String)]
+getStatePairs (Main.State pairs) = pairs
 
 removeQuotes :: String -> String
 removeQuotes str = filter (/= '\"') str
 
 -- run :: (Code, Stack, State) -> (Code, Stack, State)
-run :: (Code, Stack, State) -> (Code, Stack, State)
+run :: (Code, Stack, Main.State) -> (Code, Stack, Main.State)
 run ([], stack, state) = ([], stack, state)  -- If the code is empty, return the current state
 run (inst:code, stack, state) =
   case inst of
@@ -207,11 +207,11 @@ exampleCode = [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"]
 initialStack :: Stack
 initialStack = createEmptyStack
 
-initialState :: State
-initialState = State []
+initialState :: Main.State
+initialState = Main.State []
 
 -- Test the run function
-result :: (Code, Stack, State)
+result :: (Code, Stack, Main.State)
 result = run (exampleCode, initialStack, initialState)
 
 -- Print the result
