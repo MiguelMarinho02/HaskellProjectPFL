@@ -1,5 +1,8 @@
+import Text.Parsec
+import Text.Parsec.String (Parser)
+import Text.Parsec.Expr
+import Data.Char
 -- PFL 2023/24 - Haskell practical assignment quickstart
-import Data.List
 
 -- Part 1
 
@@ -35,16 +38,16 @@ isEmpty (Stk _) = False
 data State = State [(String,String)]
     deriving Show
 
-emptyState :: State
-emptyState = State []
+emptyState :: Main.State
+emptyState = Main.State []
 
-addState :: State -> (String, String) -> State
-addState (State state) (key, value) =
-  State $ sort $ (key, value) : filter (\(k, _) -> k /= key) state
+addState :: Main.State -> (String, String) -> Main.State
+addState (Main.State state) (key, value) =
+  Main.State $ sort $ (key, value) : filter (\(k, _) -> k /= key) state
 
-isEmptyState :: State -> Bool
-isEmptyState (State [])= True
-isEmptyState (State _) = False
+isEmptyState :: Main.State -> Bool
+isEmptyState (Main.State [])= True
+isEmptyState (Main.State _) = False
 
 -- TO DO functions --
 createEmptyStack :: Stack
@@ -56,11 +59,11 @@ checkStr s = if s == "ff" then "False" else if s == "tt" then "True" else s
 stack2Str :: Stack -> String 
 stack2Str stk = if isEmpty stk then "" else if isEmpty (pop stk) then checkStr (top stk) else checkStr (top stk) ++ "," ++ stack2Str (pop stk)
 
-createEmptyState :: State
+createEmptyState :: Main.State
 createEmptyState = emptyState
 
-state2Str :: State -> String
-state2Str (State pairs) =
+state2Str :: Main.State -> String
+state2Str (Main.State pairs) =
   if null pairs
     then ""
     else init (concatMap pairToStr pairs)
@@ -236,26 +239,171 @@ test11 = testAssembler [Push 1,Push 2,And]
 -- If you test:
 test12 = testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
 -- You should get an exception with the string: "Run-time error"
+
 -- Part 2
 
 -- TODO: Define the types Aexp, Bexp, Stm and Program
 
--- compA :: Aexp -> Code
-compA = undefined -- TODO
+data Aexp
+  = ALit Integer
+  | AVar String 
+  | AAdd Aexp Aexp 
+  | ASub Aexp Aexp 
+  | AMul Aexp Aexp
+  deriving Show
 
--- compB :: Bexp -> Code
-compB = undefined -- TODO
+data Bexp
+  = BLit Bool  
+  | BNot Bexp 
+  | BAnd Bexp Bexp
+  | BEq Aexp Aexp
+  | BBEq Bexp Bexp
+  | BLe Aexp Aexp 
+  deriving Show
 
--- compile :: Program -> Code
-compile = undefined -- TODO
+data Stm
+  = Assign String Aexp
+  | If Bexp Program Program 
+  | While Bexp Program
+  deriving Show
 
--- parse :: String -> Program
-parse = undefined -- TODO
+type Program = [Stm]
+
+compA :: Aexp -> Code
+compA (ALit s) = [Push s]
+compA (AVar var) = [Fetch var]
+compA (AAdd e1 e2) = compA e1 ++ compA e2 ++ [Add]
+compA (ASub e1 e2) = compA e1 ++ compA e2 ++ [Sub]
+compA (AMul e1 e2) = compA e1 ++ compA e2 ++ [Mult]
+
+compB :: Bexp -> Code
+compB (BLit True) = [Tru]
+compB (BLit False) = [Fals]
+compB (BNot e) = compB e ++ [Neg]
+compB (BAnd e1 e2) = compB e1 ++ compB e2 ++ [And]
+compB (BBEq e1 e2) = compB e1 ++ compB e2 ++ [Equ]
+compB (BEq e1 e2) = compA e1 ++ compA e2 ++ [Equ]
+compB (BLe e1 e2) = compA e1 ++ compA e2 ++ [Le]
+
+comp :: Stm -> Code
+comp (Assign s e) = compA e ++ [Store s]
+comp (If e p1 p2) = compB e ++ [Branch (compile p1) (compile p2)]
+comp (While e p1) = [Loop (compB e)  (compile p1)]
+
+compile :: Program -> Code
+compile [] = []
+compile (x:xs) = comp x ++ compile xs
+
+identifier :: Parser String
+identifier = many1 letter
+
+integer :: Parser Integer
+integer = read <$> many1 digit
+
+aexpParser :: Parser Aexp
+aexpParser = try aexpParenParser <|> aexpOpParser <|> aexpTermParser
+
+aexpTermParser :: Parser Aexp
+aexpTermParser = ALit <$> integer <|> AVar <$> identifier
+
+aexpParenParser :: Parser Aexp
+aexpParenParser = char '(' *> aexpParser <* char ')'
+
+aexpOpParser :: Parser Aexp
+aexpOpParser = buildExpressionParser aexptable aexpOpTermParser
+
+aexpOpTermParser :: Parser Aexp
+aexpOpTermParser = try aexpParenParser <|> aexpTermParser
+
+aexptable =
+  [ [binary "*" AMul AssocLeft]
+  , [binary "+" AAdd AssocLeft, binary "-" ASub AssocLeft]
+  ]
+
+binary name fun assoc = Infix (reservedOp name >> return fun) assoc
+
+reservedOp :: String -> Parser String
+reservedOp op = do
+  try (spaces >> string op)
+  notFollowedBy alphaNum
+  spaces
+  return op
+
+bexpParser :: Parser Bexp
+bexpParser = try bexpLitParser
+
+bexpLitParser :: Parser Bexp
+bexpLitParser = BLit <$> (trueLit <|> falseLit)
+  where
+    trueLit = string "true" >> return True
+    falseLit = string "false" >> return False
+
+stmParser :: Parser Stm
+stmParser = try assignParser <|> ifParser <|> whileParser 
+
+assignParser :: Parser Stm
+assignParser = do
+  spaces
+  var <- identifier
+  spaces
+  string ":="
+  spaces
+  expr <- aexpParser
+  spaces
+  char ';'
+  return (Assign var expr)
+
+ifParser :: Parser Stm
+ifParser = do
+  spaces
+  string "if"
+  spaces
+  condition <- bexpParser
+  spaces
+  string "then"
+  spaces
+  trueBranch <- programParser
+  spaces
+  char ';'
+  string "else"
+  spaces
+  falseBranch <- programParser
+  spaces
+  char ';'
+  return (If condition trueBranch falseBranch)
+
+whileParser :: Parser Stm
+whileParser = do
+  spaces
+  string "while"
+  spaces
+  condition <- bexpParser
+  spaces
+  string "do"
+  spaces
+  body <- programParserInParens <|> programParser
+  spaces
+  char ';'
+  return (While condition body)
+
+programParserInParens :: Parser Program
+programParserInParens = char '(' *> programParser <* char ')'
+
+programParser :: Parser Program
+programParser = many stmParser
+
+parseProgram :: String -> Program
+parseProgram codeString = case Text.Parsec.parse programParser "" codeString of
+    Left err -> error $ "Parse error: " ++ show err
+    Right program -> program
+
+parse :: String -> Program
+parse codeString = parseProgram codeString
 
 -- To help you test your parser
 testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
-  where (_,stack,state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
+  where (_,stack,state) = run(compile (Main.parse programCode), createEmptyStack, createEmptyState)
 
 -- Examples:
 -- testParser "x := 5; x := x - 1;" == ("","x=4")
