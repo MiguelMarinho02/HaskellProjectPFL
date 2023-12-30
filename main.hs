@@ -325,7 +325,6 @@ binary name fun assoc = Infix (reservedOp name >> return fun) assoc
 reservedOp :: String -> Parser String
 reservedOp op = do
   try (spaces >> string op)
-  notFollowedBy alphaNum
   spaces
   return op
 
@@ -362,14 +361,13 @@ ifParser = do
   spaces
   string "then"
   spaces
-  trueBranch <- programParser
+  trueBranch <- try programParserInParens <|> try programParser
   spaces
-  char ';'
   string "else"
   spaces
-  falseBranch <- programParser
+  falseBranch <- try programParserInParens <|> programParser
   spaces
-  char ';'
+  optional (char ';')
   return (If condition trueBranch falseBranch)
 
 whileParser :: Parser Stm
