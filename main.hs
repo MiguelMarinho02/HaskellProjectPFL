@@ -71,25 +71,7 @@ state2Str (Main.State pairs) =
     then ""
     else init (concatMap pairToStr pairs)
   where
-    pairToStr (key, value) = key ++ "=" ++ checkStr value ++ "," 
-
-add :: Stack -> Stack
-add stack =
-    case stack of 
-      Stk (x:y:xs) -> push (show (read x + read y)) (pop(pop stack))
-      _            -> error "Not enough elements on the stack for this operation."
-
-mul :: Stack -> Stack
-mul stack =
-    case stack of
-      Stk (x:y:xs) -> push (show (read x * read y)) (pop(pop stack))
-      _            -> error "Not enough elements on the stack for this operation."
-
-equ :: Code
-equ = [Equ]
-
-le :: Code
-le = [Le]
+    pairToStr (key, value) = key ++ "=" ++ checkStr value ++ ","
 
 getStatePairs :: Main.State -> [(String, String)]
 getStatePairs (Main.State pairs) = pairs
@@ -111,36 +93,36 @@ run (inst:code, stack, state) =
           case (reads x, reads y) of
             ([(xVal, "")], [(yVal, "")]) ->
               run (code, push (show (xVal + yVal)) (pop (pop stack)), state)
-            _ -> error "Invalid operands for addition: at least one of the values isn't an integer."
-        _ -> error "Not enough elements on the stack for this operation."
+            _ -> error $ "Run-time error"
+        _ -> error $ "Run-time error"
     Mult ->
       case stack of
         Stk (x:y:xs) ->
           case (reads x, reads y) of
             ([(xVal, "")], [(yVal, "")]) ->
               run (code, push (show (xVal * yVal)) (pop (pop stack)), state)
-            _ -> error "Invalid operands for multiplication: at least one of the values isn't an integer."
-        _ -> error "Not enough elements on the stack for this operation."
+            _ -> error $ "Run-time error"
+        _ -> error $ "Run-time error"
     Sub ->
       case stack of
         Stk (x:y:xs) ->
           case (reads x, reads y) of
             ([(xVal, "")], [(yVal, "")]) ->
               run (code, push (show (xVal - yVal)) (pop (pop stack)), state)
-            _ -> error "Invalid operands for subtraction: at least one of the values isn't an integer."
-        _ -> error "Not enough elements on the stack for this operation."
+            _ -> error $ "Run-time error"
+        _ -> error $ "Run-time error"
     Equ ->
       case stack of
         Stk (x:y:xs) -> run (code, push (if x == y then "tt" else "ff") (pop (pop stack)), state)
-        _ -> error "Not enough elements on the stack for this operation."
+        _ -> error $ "Run-time error"
     Le ->
       case stack of
         Stk (x:y:xs) ->
           case (reads x, reads y) of
             ([(xVal, "")], [(yVal, "")]) ->
               run (code, push (if (xVal :: Integer) <= (yVal :: Integer) then "tt" else "ff") (pop (pop stack)), state)
-            _ -> error "Invalid operands for less than or equal to comparison: at least one of the values isn't an integer."
-        _ -> error "Not enough elements on the stack for this operation."
+            _ -> error $ "Run-time error"
+        _ -> error $ "Run-time error"
     Fetch x ->
       case lookup x (getStatePairs state) of
         Just value -> run (code, push value stack, state)
@@ -148,20 +130,20 @@ run (inst:code, stack, state) =
     Store x ->
       case stack of
         Stk (value:rest) -> run (code, pop stack, addState state (x, removeQuotes value))
-        _                -> error "Not enough elements on the stack for store operation."
+        _                -> error $ "Run-time error"
     Branch c1 c2 ->
       case stack of
         Stk ("tt":xs) -> run (c1 ++ code, pop stack, state)
         Stk ("ff":xs) -> run (c2 ++ code, pop stack, state)
-        _             -> error "Invalid operand for branch: top of stack must be tt or ff."
+        _             -> error $ "Run-time error"
     Neg ->
       case stack of
         Stk(x:xs) ->
           case x of
             "tt" -> run(code, push "ff" (pop stack), state)
             "ff" -> run(code, push "tt" (pop stack), state)
-            _    -> error "Run-time error"
-        _ -> error "Not enough elements on the stack for this operation."
+            _    -> error $ "Run-time error"
+        _ -> error $ "Run-time error"
     And ->
       case stack of
         Stk (x:y:xs) ->
@@ -169,17 +151,9 @@ run (inst:code, stack, state) =
             then run(code, push(logicalAnd x y) (pop(pop stack)), state)
             else error $ "Run-time error"
         _ -> error $ "Run-time error"
-    Loop c1 c2 -> run (c1 ++ [Branch (c2 ++ [Loop c1 c2]) [Noop]] ++ code, stack, state) ---- Loop c1 c2 -> run (c1 ++ [Branch c2 (Noop : Loop c1 c2 : [])] ++ code, stack, state)
+    Loop c1 c2 -> run (c1 ++ [Branch (c2 ++ [Loop c1 c2]) [Noop]] ++ code, stack, state)
     Noop -> run (code, stack, state)
-    -- Add other cases for the remaining instructions
 
-
-checkTopTwo :: Stack -> Maybe (Integer, Integer)
-checkTopTwo (Stk (x:y:xs)) =
-  case (reads x, reads y) of
-    ([(x', "")], [(y', "")]) -> Just (x', y')
-    _ -> Nothing
-checkTopTwo _ = Nothing
 
 isBoolean :: String -> Bool
 isBoolean "tt" = True
@@ -190,22 +164,10 @@ logicalAnd :: String -> String -> String
 logicalAnd "tt" "tt" = "tt"
 logicalAnd _    _    = "ff"
 
---isNestedList :: (Eq a) => [a] -> Bool
---isNestedList [] = True
---isNestedList (x:xs) = isList x && isNestedList xs
---  where
---    isList :: (Eq a) => a -> Bool
---    isList [] = True
---    isList (_:_) = True
---    isList _ = False
-
---result2 = isNestedList [1, 2, [3, "hello"]]
-
--- Example Code: Push 2, Push 3, Add, Mult
+-- Test for run
 exampleCode :: Code
-exampleCode = [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"]
+exampleCode = [Tru, Fals, Equ]
 
--- Initial empty Stack and State
 initialStack :: Stack
 initialStack = createEmptyStack
 
@@ -236,10 +198,10 @@ test7 = testAssembler [Push (-20),Push (-21), Le] == ("True","")
 test8 = testAssembler [Push 5,Store "x",Push 1,Fetch "x",Sub,Store "x"] == ("","x=4")
 test9 = testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg] [Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]] == ("","fact=3628800,i=1")
 --If you test:
-test11 = testAssembler [Push 1,Push 2,And]
+test10 = testAssembler [Push 1,Push 2,And]
 -- You should get an exception with the string: "Run-time error"
 -- If you test:
-test12 = testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
+test11 = testAssembler [Tru,Tru,Store "y", Fetch "x",Tru]
 -- You should get an exception with the string: "Run-time error"
 
 -- Part 2
