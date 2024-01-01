@@ -3,6 +3,8 @@ import Text.Parsec.String (Parser)
 import Text.Parsec.Expr
 import Data.Char
 import Data.List
+import Control.Applicative (liftA)
+import Data.Functor.Identity
 -- PFL 2023/24 - Haskell practical assignment quickstart
 
 -- Part 1
@@ -283,7 +285,7 @@ compB (BNot e) = compB e ++ [Neg]
 compB (BAnd e1 e2) = compB e1 ++ compB e2 ++ [And]
 compB (BBEq e1 e2) = compB e1 ++ compB e2 ++ [Equ]
 compB (BEq e1 e2) = compA e1 ++ compA e2 ++ [Equ]
-compB (BLe e1 e2) = compA e1 ++ compA e2 ++ [Le]
+compB (BLe e1 e2) = compA e2 ++ compA e1 ++ [Le]
 
 comp :: Stm -> Code
 comp (Assign s e) = compA e ++ [Store s]
@@ -294,6 +296,20 @@ compile :: Program -> Code
 compile [] = []
 compile (x:xs) = comp x ++ compile xs
 
+data Expr = AExpr Aexp | BExpr Bexp
+
+aexpToExpr :: Aexp -> Expr
+aexpToExpr = AExpr
+
+bexpToExpr :: Bexp -> Expr
+bexpToExpr = BExpr
+
+exprToAexp :: Expr -> Aexp
+exprToAexp (AExpr a) = a
+
+exprToBexp :: Expr -> Bexp
+exprToBexp (BExpr b) = b
+
 identifier :: Parser String
 identifier = many1 letter
 
@@ -301,19 +317,19 @@ integer :: Parser Integer
 integer = read <$> many1 digit
 
 aexpParser :: Parser Aexp
-aexpParser = try aexpParenParser <|> aexpOpParser <|> aexpTermParser
+aexpParser = try aexpOpParser <|> try aexpTermParser <|> try aexpParenParser
 
 aexpTermParser :: Parser Aexp
 aexpTermParser = ALit <$> integer <|> AVar <$> identifier
 
 aexpParenParser :: Parser Aexp
-aexpParenParser = char '(' *> aexpParser <* char ')'
+aexpParenParser = char '(' *> aexpParser <* char  ')'
 
 aexpOpParser :: Parser Aexp
 aexpOpParser = buildExpressionParser aexptable aexpOpTermParser
 
 aexpOpTermParser :: Parser Aexp
-aexpOpTermParser = try aexpParenParser <|> aexpTermParser
+aexpOpTermParser = try aexpParenParser <|> try aexpTermParser
 
 aexptable =
   [ [binary "*" AMul AssocLeft]
@@ -329,16 +345,43 @@ reservedOp op = do
   return op
 
 bexpParser :: Parser Bexp
-bexpParser = try bexpLitParser
+bexpParser = exprToBexp <$> buildExpressionParser bexpOpTable bexpTermParser
 
-bexpLitParser :: Parser Bexp
-bexpLitParser = BLit <$> (trueLit <|> falseLit)
+bexpTermParser :: Parser Expr
+bexpTermParser = try bexpParenParser <|> bexpLitParser <|> try bexpLe <|> try bexpEq <|> bexpNot <|> bexpBEq <|> bexpAnd
   where
-    trueLit = string "true" >> return True
-    falseLit = string "false" >> return False
+    bexpLe = BExpr <$> (BLe <$> aexpParser <* reservedOp2 "<=" <*> aexpParser)
+    bexpEq = BExpr <$> (BEq <$> aexpParser <* reservedOp2 "==" <*> aexpParser)
+    bexpNot = BExpr <$> (BNot <$ string "not" <*> bexpParser)
+    bexpBEq = BExpr <$> (BBEq <$> bexpParser <* string "=" <*> bexpParser)
+    bexpAnd = BExpr <$> (BAnd <$> bexpParser <* string "and" <*> bexpParser)
+
+bexpOpTable :: [[Operator String () Data.Functor.Identity.Identity Expr]]
+bexpOpTable =
+  [ [ Infix (reservedOp2 "<=" >> return (\x y -> BExpr (BLe (exprToAexp x) (exprToAexp y)))) AssocLeft ]
+  , [Infix (reservedOp2 "==" >> return (\x y -> BExpr (BEq (exprToAexp x) (exprToAexp y)))) AssocLeft ]
+  , [ Prefix (reservedOp2 "not" >> return (\x -> BExpr (BNot (exprToBexp x)))) ]
+  , [ Infix (reservedOp2 "=" >> return (\x y -> BExpr (BBEq (exprToBexp x) (exprToBexp y)))) AssocLeft]
+  , [ Infix (reservedOp2 "and" >> return (\x y -> BExpr (BAnd (exprToBexp x) (exprToBexp y)))) AssocLeft ]
+  ]
+
+reservedOp2 :: String -> Parser String
+reservedOp2 op = do
+  try (spaces >> string op)
+  spaces
+  return op
+
+bexpParenParser :: Parser Expr
+bexpParenParser = BExpr <$> (char '(' *> bexpParser <* char ')')
+
+bexpLitParser :: Parser Expr
+bexpLitParser = BExpr . BLit <$> (trueLit <|> falseLit)
+  where
+    trueLit = string "True" >> return True
+    falseLit = string "False" >> return False
 
 stmParser :: Parser Stm
-stmParser = try assignParser <|> ifParser <|> whileParser 
+stmParser = try assignParser <|> try ifParserElseInclosed <|> try ifParser <|> try whileParser 
 
 assignParser :: Parser Stm
 assignParser = do
@@ -347,7 +390,7 @@ assignParser = do
   spaces
   string ":="
   spaces
-  expr <- aexpParser
+  expr <- try aexpParser 
   spaces
   char ';'
   return (Assign var expr)
@@ -357,7 +400,7 @@ ifParser = do
   spaces
   string "if"
   spaces
-  condition <- bexpParser
+  condition <- try bexpParser
   spaces
   string "then"
   spaces
@@ -365,9 +408,26 @@ ifParser = do
   spaces
   string "else"
   spaces
-  falseBranch <- try programParserInParens <|> programParser
+  falseBranch <- stmParser
+  return (If condition trueBranch [falseBranch])
+
+ifParserElseInclosed :: Parser Stm
+ifParserElseInclosed = do
   spaces
-  optional (char ';')
+  string "if"
+  spaces
+  condition <- try bexpParser
+  spaces
+  string "then"
+  spaces
+  trueBranch <- try programParserInParens <|> try programParser
+  spaces
+  string "else"
+  spaces
+  string "("
+  falseBranch <- try programParserInParens <|> try programParser
+  spaces
+  string ");"
   return (If condition trueBranch falseBranch)
 
 whileParser :: Parser Stm
@@ -375,11 +435,11 @@ whileParser = do
   spaces
   string "while"
   spaces
-  condition <- bexpParser
+  condition <- try bexpParser
   spaces
   string "do"
   spaces
-  body <- programParserInParens <|> programParser
+  body <- try programParserInParens <|> try programParser
   spaces
   char ';'
   return (While condition body)
@@ -406,13 +466,13 @@ testParser programCode = (stack2Str stack, state2Str state)
 -- Examples:
 tp1 = testParser "x := 5; x := x - 1;" == ("","x=4")
 tp2 = testParser "x := 0 - 2;" == ("","x=-2")
--- testParser "if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;" == ("","y=2")
--- testParser "x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;);" == ("","x=1")
--- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;" == ("","x=2")
--- testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;" == ("","x=2,z=4")
--- testParser "x := 44; if x <= 43 then x := 1; else (x := 33; x := x+1;); y := x*2;" == ("","x=34,y=68")
--- testParser "x := 42; if x <= 43 then (x := 33; x := x+1;) else x := 1;" == ("","x=34")
--- testParser "if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;" == ("","x=1")
--- testParser "if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;" == ("","x=2")
--- testParser "x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);" == ("","x=2,y=-10,z=6")
--- testParser "i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);" == ("","fact=3628800,i=1")
+tp3 = testParser "if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;" == ("","y=2")
+tp4 = testParser "x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;);" == ("","x=1")
+tp5 = testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;" == ("","x=2")
+tp6 = testParser "x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;" == ("","x=2,z=4")
+tp7 = testParser "x := 44; if x <= 43 then x := 1; else (x := 33; x := x+1;); y := x*2;" == ("","x=34,y=68")
+tp8 = testParser "x := 42; if x <= 43 then (x := 33; x := x+1;) else x := 1;" == ("","x=34")
+tp9 = testParser "if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;" == ("","x=1")
+tp10 = testParser "if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;" == ("","x=2")
+tp11 = testParser "x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);" == ("","x=2,y=-10,z=6")
+tp12 = testParser "i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);" == ("","fact=3628800,i=1")
